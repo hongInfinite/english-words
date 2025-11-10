@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>JK Words — Practice & Pronounce</title>
+  <style>
+    :root{--bg:#f7fbff;--card:#ffffff;--accent:#2b6cb0;--muted:#6b7280}
+    body{font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; background:var(--bg); margin:0; padding:24px; color:#0f172a}
+    h1{font-size:1.4rem;margin:0 0 8px}
+    p.small{margin:0 0 16px;color:var(--muted)}
+    .app{max-width:760px;margin:0 auto}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+    .btn{background:var(--accent);color:#fff;border:0;padding:8px 12px;border-radius:8px;cursor:pointer}
+    .btn.secondary{background:#e6eefc;color:var(--accent);border:1px solid rgba(43,108,176,.16)}
+    .panel{background:var(--card);padding:16px;border-radius:12px;box-shadow:0 6px 18px rgba(15,23,42,.06)}
+    .wordLarge{font-size:3.2rem;font-weight:700;margin:8px 0}
+    .ipa{font-size:1.2rem;color:var(--muted)}
+    .controls-inline{display:flex;gap:8px;align-items:center}
+    label{font-size:0.9rem;color:var(--muted)}
+    .list{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .chip{padding:6px 10px;border-radius:999px;background:#f1f5f9;border:1px solid #e2e8f0;cursor:pointer}
+    .chip.active{background:var(--accent);color:#fff;border:none}
+    .quiz{margin-top:12px}
+    .choices{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+    .choice{padding:10px;border-radius:8px;border:1px solid #e6eefc;background:#fff;cursor:pointer}
+    .choice.correct{border-color:green;background:#ecfdf5}
+    .choice.wrong{border-color:#f87171;background:#fff5f5}
+    .row{display:flex;gap:12px;align-items:center}
+    .settings{display:flex;gap:12px;align-items:center}
+    .small-input{padding:6px;border-radius:6px;border:1px solid #cbd5e1}
+    footer{margin-top:18px;color:var(--muted);font-size:0.9rem}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>JK Word Pronunciation Tool</h1>
+    <p class="small">Flashcards + pronunciation (uses your browser's speech). Works offline. Click a word to practice or press Play to hear it.</p>
+
+    <div class="controls">
+      <button class="btn" id="playBtn">Play pronunciation</button>
+      <button class="btn secondary" id="nextBtn">Next word</button>
+      <button class="btn secondary" id="shuffleBtn">Shuffle</button>
+      <div style="margin-left:auto" class="row">
+        <label for="voiceSelect">Voice:</label>
+        <select id="voiceSelect" class="small-input"></select>
+        <label for="rate">Rate</label>
+        <input id="rate" type="range" min="0.6" max="1.6" step="0.1" value="1">
+      </div>
+    </div>
+
+    <div class="panel">
+      <div id="card">
+        <div class="wordLarge" id="word">it</div>
+        <div class="ipa" id="ipa">[ɪt]</div>
+        <div class="controls-inline" style="margin-top:8px">
+          <button class="btn" id="revealBtn">Reveal / Repeat</button>
+          <button class="btn secondary" id="quizModeBtn">Start Quiz</button>
+          <button class="btn secondary" id="editBtn">Edit List</button>
+        </div>
+
+        <div class="list" id="wordList"></div>
+
+        <div class="quiz" id="quizArea" style="display:none">
+          <div id="quizQuestion" class="small">Which word did you hear?</div>
+          <div class="choices" id="choices"></div>
+          <div style="margin-top:8px"><button class="btn" id="nextQuizBtn">Next</button></div>
+        </div>
+
+        <div id="editArea" style="display:none;margin-top:12px">
+          <label>Words (comma separated)</label>
+          <input id="wordsInput" class="small-input" style="width:100%;margin-top:6px" />
+          <div style="margin-top:8px">
+            <button class="btn" id="saveListBtn">Save</button>
+            <button class="btn secondary" id="cancelEditBtn">Cancel</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <footer>Default list: it, in, fat, fin, fit, pin, tin — phonetics shown next to words.</footer>
+  </div>
+
+  <script>
+    // Initial words + simple IPA
+    let words = [
+      {w:'it', ipa:'[ɪt]'},
+      {w:'in', ipa:'[ɪn]'},
+      {w:'fat', ipa:'[fæt]'},
+      {w:'fin', ipa:'[fɪn]'},
+      {w:'fit', ipa:'[fɪt]'},
+      {w:'pin', ipa:'[pɪn]'},
+      {w:'tin', ipa:'[tɪn]'}
+    ];
+
+    // UI refs
+    const wordEl = document.getElementById('word');
+    const ipaEl = document.getElementById('ipa');
+    const playBtn = document.getElementById('playBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const shuffleBtn = document.getElementById('shuffleBtn');
+    const wordListEl = document.getElementById('wordList');
+    const revealBtn = document.getElementById('revealBtn');
+    const quizModeBtn = document.getElementById('quizModeBtn');
+    const quizArea = document.getElementById('quizArea');
+    const choicesEl = document.getElementById('choices');
+    const nextQuizBtn = document.getElementById('nextQuizBtn');
+    const wordLarge = document.getElementById('word');
+    const ipaText = document.getElementById('ipa');
+    const editBtn = document.getElementById('editBtn');
+    const editArea = document.getElementById('editArea');
+    const wordsInput = document.getElementById('wordsInput');
+    const saveListBtn = document.getElementById('saveListBtn');
+    const cancelEditBtn = document.getElementById('cancelEditBtn');
+    const voiceSelect = document.getElementById('voiceSelect');
+    const rateInput = document.getElementById('rate');
+
+    let index = 0;
+    let quizMode = false;
+    let shuffled = false;
+
+    function renderWordList(){
+      wordListEl.innerHTML = '';
+      words.forEach((item,i)=>{
+        const btn = document.createElement('button');
+        btn.className = 'chip' + (i===index? ' active':'');
+        btn.textContent = item.w + ' ' + item.ipa;
+        btn.addEventListener('click', ()=>{ index = i; updateCard(); playCurrent(); });
+        wordListEl.appendChild(btn);
+      });
+    }
+
+    function updateCard(){
+      const cur = words[index];
+      wordEl.textContent = cur.w;
+      ipaEl.textContent = cur.ipa || '';
+      renderWordList();
+    }
+
+    function speak(text){
+      if(!('speechSynthesis' in window)){
+        alert('Sorry — your browser does not support speechSynthesis.');
+        return;
+      }
+      const utter = new SpeechSynthesisUtterance(text);
+      const voices = window.speechSynthesis.getVoices();
+      const sel = voiceSelect.value;
+      if(sel){
+        const v = voices.find(v=>v.name===sel);
+        if(v) utter.voice = v;
+      }
+      utter.rate = parseFloat(rateInput.value || '1');
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utter);
+    }
+
+    function playCurrent(){ speak(words[index].w); }
+
+    playBtn.addEventListener('click', ()=>{ playCurrent(); });
+    nextBtn.addEventListener('click', ()=>{ index = (index+1)%words.length; updateCard(); playCurrent(); });
+    shuffleBtn.addEventListener('click', ()=>{ shuffleWords(); updateCard(); });
+    revealBtn.addEventListener('click', ()=>{ updateCard(); playCurrent(); });
+
+    quizModeBtn.addEventListener('click', ()=>{
+      quizMode = !quizMode;
+      quizArea.style.display = quizMode? 'block' : 'none';
+      quizModeBtn.textContent = quizMode? 'Stop Quiz' : 'Start Quiz';
+      if(quizMode) startQuizRound();
+    });
+
+    editBtn.addEventListener('click', ()=>{
+      editArea.style.display = 'block';
+      wordsInput.value = words.map(x=>x.w).join(', ');
+    });
+    cancelEditBtn.addEventListener('click', ()=>{ editArea.style.display='none'; });
+    saveListBtn.addEventListener('click', ()=>{
+      const raw = wordsInput.value.split(',').map(s=>s.trim()).filter(Boolean);
+      words = raw.map(w=>({w:w, ipa: guessIpa(w)}));
+      index = 0; editArea.style.display='none'; updateCard();
+    });
+
+    function guessIpa(word){
+      // very simple guesses for short words (not a replacement for accurate IPA)
+      const map = {'it':'[ɪt]','in':'[ɪn]','fat':'[fæt]','fin':'[fɪn]','fit':'[fɪt]','pin':'[pɪn]','tin':'[tɪn]'};
+      return map[word.toLowerCase()]||'';
+    }
+
+    // --- Quiz logic ---
+    function startQuizRound(){
+      // pick a word at random and speak it, then show choices
+      const correct = Math.floor(Math.random()*words.length);
+      index = correct;
+      updateCard();
+      // build choices: include correct + 3 others (or fewer)
+      const options = [words[correct].w];
+      const copy = words.map(w=>w.w).filter((v,i)=>i!==correct);
+      shuffleArray(copy);
+      while(options.length < Math.min(4, words.length) && copy.length) options.push(copy.shift());
+      shuffleArray(options);
+      choicesEl.innerHTML = '';
+      options.forEach(opt=>{
+        const d = document.createElement('div');
+        d.className = 'choice';
+        d.textContent = opt;
+        d.addEventListener('click', ()=> handleChoice(d,opt,words[correct].w));
+        choicesEl.appendChild(d);
+      });
+      // speak after tiny delay so user hears clearly
+      setTimeout(()=>speak(words[correct].w), 250);
+    }
+
+    function handleChoice(elem, chosen, correct){
+      if(chosen===correct){ elem.classList.add('correct'); }
+      else{ elem.classList.add('wrong');
+        // mark correct one
+        Array.from(choicesEl.children).forEach(c=>{ if(c.textContent===correct) c.classList.add('correct'); });
+      }
+      // disable further clicks
+      Array.from(choicesEl.children).forEach(c=> c.style.pointerEvents='none');
+    }
+
+    nextQuizBtn.addEventListener('click', ()=>{ if(quizMode) startQuizRound(); });
+
+    // utils
+    function shuffleArray(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } }
+    function shuffleWords(){ shuffleArray(words); index = 0; }
+
+    // voices
+    function populateVoices(){
+      const voices = window.speechSynthesis.getVoices();
+      voiceSelect.innerHTML = '<option value="">(default)</option>' + voices.map(v=>`<option>${v.name}</option>`).join('');
+    }
+    populateVoices();
+    if (typeof speechSynthesis !== 'undefined'){
+      speechSynthesis.onvoiceschanged = populateVoices;
+    }
+
+    // keyboard: space = play, right arrow = next
+    window.addEventListener('keydown',(e)=>{
+      if(e.code==='Space'){ e.preventDefault(); playCurrent(); }
+      if(e.code==='ArrowRight'){ index=(index+1)%words.length; updateCard(); playCurrent(); }
+      if(e.code==='ArrowLeft'){ index=(index-1+words.length)%words.length; updateCard(); }
+    });
+
+    // initial render
+    updateCard();
+    renderWordList();
+  </script>
+</body>
+</html>
